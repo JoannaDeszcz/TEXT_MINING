@@ -1,0 +1,17 @@
+
+
+Projekt grupowy.
+
+Celem projektu było  przygotowanie prezentacji dotyczącej wybranej biblioteki programistycznej w języku Python lub R, która pozwala na efektywne przygotowanie tekstu do analizy poprzez utworzenie macierzy wystąpień. Prezentacja powinna w sposób praktyczny przedstawić możliwości wybranej biblioteki, w tym procesu przygotowania tekstu od dokumentu/dokumentów/korpusu do macierzy wystąpień. W szczególności należało skupić się na opisaniu praktycznych aspektów korzystania z biblioteki, a także wskazać na potencjalne zastosowanie.
+
+Do realizacji tego projektu wykorzystano język R oraz bibliotekę Tidy Text. Przeprowadzono cały proces analizy tekstu, od pobrania danych, przez oczyszczenie i przetworzenie tekstu, aż do utworzenia macierzy wystąpień słów. W dalszej części prezentacji przedstawiono szczegóły krok po kroku.
+
+Na początku konieczne było pobranie danych, aby móc przeprowadzić analizę. Następnie przystąpiono do oczyszczania i przetwarzania tekstu, wykorzystującbibliotekę Tidy Text.
+
+Pierwszym krokiem było podzielenie tekstu na pojedyncze słowa. Zrobionoto przy pomocy funkcji unnest_tokens, która dzieli tekst na słowa i zapisuje je w osobnych wierszach w ramce danych.
+
+Kolejnym etapem było oczyszczenie tekstu z niepotrzebnych słów, takich jak spójniki czy przyimki, oraz z interpunkcji. Do tego celu skorzystano z funkcji anti_join oraz unnest_tokens, które pozwoliły usunąć słowa, które nie były istotne dla analizy.
+
+Następnie przeprowadzonostemming, czyli proces sprowadzenia słów do ich podstawowej formy, aby uniknąć sytuacji, w której różne formy tego samego słowa były traktowane jako oddzielne słowa. Do tego celu skorzystano z funkcji porter_stemmer z biblioteki SnowballC.
+
+Po oczyszczeniu tekstu przystępiono do utworzenia macierzy wystąpień.
