@@ -1,0 +1,346 @@
+---
+title: "Tidytext"
+output: 
+  rmdformats::downcute 
+date: "06.05.2023"
+author: "Joanna Deszcz, Julia Gnatek, Julia Kwapień, Zuzanna Piekarczyk"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+***
+
+**Przydatne linki:**  
+https://github.com/dgrtwo/tidy-text-mining/blob/master/index.Rmd  
+https://www.tidytextmining.com/tidytext.html  
+https://bookdown.org/Maxine/tidy-text-mining/tidy-text-format.html  
+https://github.com/rstudio/rmarkdown  
+
+***
+***
+***  
+
+# Biblioteki
+```{r}
+#install.packages("rmarkdown")
+#install.packages("dplyr")
+#install.packages("tidytext")
+#install.packages("stringr")
+#install.packages("udpipe")
+#install.packages("textstem")
+#install.packages("tm")
+#install.packages("topicmodels")
+#install.packages("quanteda")
+#install.packages("ggplot2")
+#install.packages("tidyr")
+#install.packages("stringr")
+#install.packages("rmdformats")
+```
+
+```{r, include=FALSE}
+library(rmarkdown)
+library(dplyr)
+library(tidytext)
+library(stringr)
+library(udpipe)
+library(textstem)
+library(tm)
+library(topicmodels)
+library(quanteda)
+library(ggplot2)
+library(tidyr)
+library(stringr)
+library(rmdformats)
+```
+
+***
+***
+***
+
+# Dane
+W projekcie zostały wykorzystane dane z polskimi przysłowiami, które zostały udostępnione w trakcie laboratioriów. Dzięki ponownemu wykorzystaniu znanego zbioru  możliwa będzie lepsza ocena wyników uzyskanych podczas pracy z pakietem **tidytext** w porównaniu z metodami zaprezentowanymi na zajęciach. Dane zawierają 10 rekordów, gdzie każdy rekord to jedno przysłowie.  
+
+***  
+
+## Wczytanie danych
+Dane zostały wczytane przy użyciu wektora danych do zmiennej *text*.  
+```{r}
+text <- c("Jesień tego nie zrodzi, czego wiosna nie zasiała","Czego wiosna nie zasiała – jesień nie urodzi","Św. Bartłomiej pogodny, jesień pogodna","Bartłomiej zwiastuje, jaka jesień następuje, i czy w przyszłym latku dożyjesz dostatku","Bartłomiej zwiastuje, jaka jesień następuje","Bartłomieja cały wrzesień naśladuje, i z nim jesień","Bartłomieja świętego dzień w jakiej zostaje porze, taką jesień bez ochyby daje","Jaki Bartek niesie dzień, taka będzie i jesień","Jaki Bartek niesie dzień, taka będzie i jesień","Jaki Bartek, taki wrzesień, jaki Marcin, taka zima")
+```
+
+***
+
+## Czyszczenie tekstu
+
+Funkcja *clean* wykorzystuje biblioteki **stringr** oraz **dplyr**, aby wyczyścić tekst. Wykonuje ona następujące operacje:
+  
+1. Usuwa podwójne spacje z tekstu.
+2. Usuwa znaki kontrolne z tekstu.
+3. Zamienia wszystkie litery na małe.
+4. Usuwa wszystkie znaki interpunkcyjne.
+5. Usuwa ponownie podwójne spacje z tekstu.
+6. Usuwa białe znaki z początku i końca tekstu.
+  
+Wszystkie te operacje służą do usunięcia niepotrzebnych znaków i wyrazów z tekstu, które mogą zakłócać analizę tekstu lub utrudniać jego przetwarzanie. Funkcja zwraca wyczyszczony tekst - zmienna *clean_text*.
+
+```{r}
+clean <- function(text){
+  
+  require(stringr)
+  tekst_tenmp <- str_replace_all(text, "\\s{2,}", " ") %>% 
+    str_replace_all("[:cntrl:]", " ") %>%
+    tolower() %>% 
+    str_remove_all("[:punct:]") %>%
+    str_remove_all("\\d") %>%
+    str_trim()
+}
+clean_text <- clean(text)
+clean_text
+```
+
+***
+
+## Stworzenie tabeli zgodnie z ideą tidytext
+
+Kod tworzy dataframe o nazwie *text_df* z dwoma kolumnami: kolumna "line" zawiera numery linii tekstu, natomiast kolumna "text" zawiera wyczyszczony tekst.  
+
+Funkcja *tibble* pochodzi z pakietu **tibble** i jest używana do tworzenia tzw. "tidy data frames", czyli data frame'ów, w których każda kolumna odpowiada jednej zmiennej, a każdy wiersz odpowiada jednej obserwacji. W tym przypadku każda obserwacja to jedna linia tekstu, a każda zmienna to numer linii i tekst.
+
+```{r}
+text_df <- tibble(line = 1:length(clean_text), text=clean_text)
+text_df
+```
+
+***
+
+## Tokenizacja
+
+W kolejnym kroku zostaje wykonana tokenizacja zgodnie z ideą tidytext, czyli podział przysłów na słowa/tokeny. 
+
+Funkcja *unnest_tokens* z biblioteki **tidytext** dzieli tekst na pojedyncze słowa, usuwając jednocześnie wszelkie białe znaki i znaki interpunkcyjne, a następnie umieszcza każde słowo w osobnym wierszu.
+
+Funkcja ta jest przydatna w analizie tekstu, ponieważ umożliwia łatwe zliczanie wystąpień poszczególnych słów i ich analizę. Wynikowy dataframe o nazwie *text_tok* zawiera dwie kolumny: *line*, zawierającą numer linii tekstu, i *word*, zawierającą pojedyncze słowa z tej linii.
+
+```{r}
+text_tok <- text_df %>%
+  unnest_tokens(word, text)
+```
+
+***
+
+## Stopwords
+
+Następnie zostaje stworzona lista "stopwords" (słów-kluczy, które mają zostać usunięte z tekstu), która zostaje przekonwetowana na format *tibble* charakterystyczny dla pakietu *tidytext*. 
+
+Działanie kodu można podzielić na trzy etapy:
+
+1. Utworzenie listy "stopwords" zawierającej słowa, które mają zostać usunięte z tekstu. Lista ta jest utworzona ręcznie i zawiera słowa takie jak "tak", "to", "i", "w" itp., które są bardzo często występującymi słowami i nie niosą dużo znaczenia w kontekście analizy tekstu.
+2. Kod używa funkcji **stri_encode** z pakietu *stringi*, aby przekonwertować listę "stopwords" do formatu UTF-8.
+3. Ostatecznie kod tworzy *tibble* z kolumną **word**, zawierającą listę słów z listy **stopwords**.
+
+```{r}
+stopwords <- c('tak', 'to', 'tego', 'czego', 'jaka', 'taka', 'i', 'czy', 'w', 'z', 'nim', 'jakiej', 'taką', 'jaki', 'takąć', 'takąż', 'taki', 'św')
+
+stopwords <- stringi::stri_encode(stopwords, to = "UTF-8")
+
+stopwords <- tibble(word=stopwords)
+```
+
+Po stworzeniu listy stopwords wykorzystana zostaje funkcja *anti_join()* do wyeliminowania stopwords z tekstu. Operacja ta polega na zwróceniu tylko tych wierszy z ramki *text_tok*, dla których nie ma dopasowania z ramką *stopwords* w kolumnie *word*. W tym przypadku chodzi o usunięcie słów, które znajdują się na liście stopwords i są nieistotne z perspektywy analizy tekstu.
+
+```{r}
+text_stop <- anti_join(text_tok, stopwords, by = join_by(word == word))
+text_stop
+```
+
+***
+
+## Lematyzacja
+Lematyzacja to proces sprowadzenia słowa do jego podstawowej formy, zwanej lematem. Celem lematyzacji jest ujednolicenie form słów w tekście, tak aby różne odmiany tego samego słowa były traktowane jako jedno słowo. Lematyzacja jest podobna do stemmingu, ale zamiast obcinania końcówek słów, lematyzacja korzysta z reguł gramatycznych danego języka, aby uzyskać lematy - w tym przypadku reguł języka polskiego.
+
+Powyższy kod wykorzystuje funkcję *lemmatize_words()* z pakietu **polsentiment** do wykonania lematyzacji dla słów w kolumnie *word*. Wynik zostaje zapisany w nowej kolumnie *word_lemma*.
+
+```{r}
+text_lem_stem <- text_stop %>%
+  mutate(word_lemma = lemmatize_words(word, language = "polish"))
+text_lem_stem
+```
+
+Niestety jak można zauważyć R nie poradził sobie z lematyzacją w j. polskim i słowa pozostały w niezmienionej formie. Dlatego też zdecydowano się na dokonanie lematyzacji w oparciu o słownik wykorzystywany podczas zajęć.
+
+W pierwszym kroku wczytany został uproszczony słownik z pliku *slownik.txt* do zmiennej *dictionary*. Dane przekształcono na typ tibble w celu zachowania spójności z pakietem **tidytext**. Dodatkowo dokonany zmiany nazwy drugiej kolumny na *word*.
+
+Wykorzystano pakiet **dplyr** oraz funkcję *left_join()*, która po dopasowaniu zmiennej *word* w dataframe'ie *text_stop* ze wzorcem *word* w dataframe'ie *dictionary* zamieniała wartość na wzorzec z kolumny *V1*.
+
+```{r}
+dictionary <- read.csv2("slownik.txt", header=F, fileEncoding = "")
+
+dictionary <- as_tibble(dictionary, rownames = NULL)
+
+dictionary<- rename(dictionary, word = V2)
+
+text_lem <- text_stop %>%
+  left_join(dictionary, by = c("word" = "word")) %>%
+  mutate(word = if_else(!is.na(V1), V1, word))
+text_lem <- text_lem %>% select(line, word)
+text_lem
+```
+***
+
+### Przygotowanie tabeli document-term
+
+Ostatnim elementem etapu przygotowania danych było zliczenie ilości wystąpień poszczególnych termów w obrębie danego przysłowia przy użyciu funkcji *count()* z pakietu **dplyr**. W rezultacie powstał obiekt tibble o wymiarach 53x3. W podejściu tidy nie ma potrzeby tworzenia bag of words. W nomenklaturze tidytext obiekt ten można nazwać tabelą *document-term*, która posłuży do stworzenia m.in. *macierzy document-term* w kolejnych etapach projektu.
+
+```{r}
+text_lem <- text_lem %>%
+  select(line,word) %>%
+  count(line, word) %>%
+  rename(count = n, word = word)
+text_lem
+```
+Tak przekształcone dane były gotowe do przeprowadzenia zaplanowanych analiz.
+
+***
+***
+***
+
+# Macierze document-term
+
+Jedną z najczęstszych struktur, z którymi współpracują pakiety do text mining, jest macierz document-term (DTM). Jest to macierz, w której:
+
+* każdy wiersz reprezentuje jeden dokument (w tym przypadku jedno przysłowie),
+* każda kolumna reprezentuje jeden termin 
+* i każda wartość zawiera liczbę wystąpień tego terminu w tym dokumencie.
+
+Ponieważ większość par dokumentu i terminu nie występuje (mają one wartość zero), DTM są zwykle implementowane jako macierze typu sparse (macierze rzadkie). Obiekty te można traktować tak, jakby były macierzami, ale są przechowywane w bardziej wydajnym formacie.
+
+***  
+
+## Macierz document-term (DTM)
+
+Do stworzenia macierzy document-term użyto funkcji *cast_dtm()* z pakietu **quanteda**. Jednak macierz DTM w podejściu tidy różni się od macierzy tworzonych w innych bibliotekach czy językach programowania. W tym przypadku w wyniku wykonania kodu otrzymujemy podsumowanie wyników, a nie samą macierz.
+
+Można odczytać nastepujące wnioski:  
+1. funkcja znalazła 10 dokumentów (przysłów), w których znajduje się 28 unikalnych termów (słów);
+2. w macierzy występują 53 wpisy, co oznacza, że wiele kombinacji dokument-słowo jest pusta;
+3. wartość rzadkości (sparsity) wynosi 81%, co oznacza, że większość kombinacji dokument-słowo nie występuje w danych;
+4. najdłuższe słowo składa się z 10 liter.
+
+Waga w macierzy została obliczona na podstawie liczby wystąpień danego słowa w danym dokumencie. Oznacza to, że waga danego słowa w danym dokumencie zależy od liczby jego wystąpień w tym dokumencie. Metoda wagowania ta nazywa się *term frequency (tf)* i jest jednym z kilku sposobów obliczania wag w macierzy dokument-słowo.
+
+```{r}
+dtm <- text_lem %>% 
+  cast_dtm(document = line, term = word, value = count)
+dtm
+```
+
+***  
+
+## Macierz sparse document-term SDTM
+
+W kolejnym kroku utworzono macierz rzadką (SDTM) przy użyciu funkcji *cast_sparse()* z pakietu **quanteda**, w której każdy wiersz odpowiada jednemu dokumentowi (przysłowiu), a każda kolumna reprezentuje dane słowo (token). Na przecięciach wierszy i kolumn wyliczone zostały liczebności tokenów w obrębie poszczególnych dokumentów.
+
+Macierz typu sparse charakteryzuje się tym, że w miejscach, gdzie kombinacja dokument-słowo jest pusta, wyświetlana jest kropka zamiast zera i przypomina ona bardziej typową macierz DTM. 
+
+```{r}
+dtm_sparse <- text_lem %>% 
+  cast_sparse(line, word, count)
+dtm_sparse
+```
+
+***  
+
+## Macierz document-feature (DFM)
+
+Jednak typowym dla podejścia tidy są macierze document-feature (DFM), które również należą do pakietu **quanteda**. Funkcja cast_dfm() przekształca obiekt tibble w macierz DFM, która wygląda podobnie jak macierze DTM tworzone w innych pakietach/językach programowania. Wynikiem jest tabela podobna do macierzy SDTM z tą różnicą, że macierz posiada nagłówki, a w miejscach, gdzie kombinacja dokument-feature jest pusta, wyświetlane jest zero.
+ 
+```{r}
+dfm <- text_lem %>% 
+  cast_dfm(document = line, term = word, value = count)
+dfm
+```
+
+***  
+
+## Macierz feature-document (FDM)
+
+Za pomocą funkcji **t()** oraz **as.matrix()** wygenerowano również macierz FDM (feature-document), czyli transponowaną macierz DFM.
+
+```{r}
+fdm <- t(as.matrix(dfm))
+fdm
+```
+
+***  
+
+## Binarna macierz feature-document
+
+Macierz FDM zamieniono na macierz binarną. W wyniku tej sekwencji kodu, zmienna **binary_fdm** będzie zawierała macierz binarną, w której każdy element będzie przyjmował wartość 1, jeśli odpowiadający mu element w macierzy FDM jest większy niż 0, a w przeciwnym przypadku będzie miał wartość 0. Do przeprowadzenia konwersji użyto funkcji **apply()**. W tym przypadku **MARGIN = c(1,2)** oznacza, że funkcja **FUN** będzie zastosowana do każdego elementu macierzy FDM.
+
+```{r}
+binary_fdm <- apply(fdm, MARGIN = c(1,2), FUN = function(x) ifelse(x > 0, 1, 0))
+binary_fdm
+```
+
+***  
+
+## Logarytmiczna macierz feature-document
+
+Kod tworzy nową macierz **log_fdm**, która jest logarytmem naturalnym z wartości macierzy FDM zwiększonymi o 1. 
+
+Następnie, wywołanie funkcji **log()** z argumentem **fdm + 1** oblicza logarytm naturalny z wartości w macierzy FDM z dodaną wartością 1. 
+
+W przypadku analizy tekstu, zastosowanie logarytmu naturalnego zwiększa wagi rzadko występujących cech, co może poprawić wyniki analizy. Dodanie wartości 1 jest wykorzystywane, aby uniknąć obliczenia logarytmu z wartości równej 0.
+
+Ostatecznie, zmienna log_fdm przechowuje macierz o tych samych wymiarach co macierz fdm, ale z wartościami zmienionymi na logarytmy. 
+
+```{r}
+log_fdm <- log(fdm + 1) 
+log_fdm
+```
+
+***  
+
+## Macierz TF-IDF
+
+Aby przekształcić macierz FDM na macierz TF-IDF (Term Frequency-Inverse Document Frequency), należy pomnożyć każdy element macierzy TF przez wagę IDF dla danego termu, która wyraża się wzorem:
+
+inline equation: $IDF(t) = log(N/DF(t))$
+
+gdzie: 
+*N* - liczba wszystkich dokumentów
+*df(t)* - liczba dokumentów zawierających term t. 
+
+W wyniku tej sekwencji kodu, zmienna **tfidf_matrix** będzie zawierała macierz TF-IDF, w której każdy element będzie wynikiem pomnożenia odpowiadającego mu elementu w macierzy TF przez wagę IDF dla danego termu. 
+
+Ta operacja pozwala na wyodrębnienie najistotniejszych słów (termów) w danym dokumencie, ponieważ słowa występujące często w jednym dokumencie, ale rzadko w innych, będą miały wyższą wagę TF-IDF.
+
+
+```{r}
+tf_matrix <- t(apply(fdm, 1, function(x) x/sum(x))) # macierz TF
+idf_weights <- log(nrow(fdm)/rowSums(fdm > 0)) # wektor wag IDF
+tfidf_matrix <- tf_matrix * idf_weights # macierz TF-IDF
+tfidf_matrix
+```
+
+
+***
+***  
+***  
+
+# Wizualizacja
+
+## Liczba wystąpień poszczególnych termów
+```{r}
+ggplot(text_lem , aes(x = reorder(word, count), y = count)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Słowa", y = "Liczba wystąpień") +
+  ggtitle("Liczba wystąpień poszczególnych termów") +
+  scale_y_continuous(breaks = c(1,2,3,4,5,6,7,8,9,10))
+```
+
+
