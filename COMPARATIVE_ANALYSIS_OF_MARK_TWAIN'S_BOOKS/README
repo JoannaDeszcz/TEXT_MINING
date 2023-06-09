@@ -1,1 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Analiza zbiorów dokumentów</title>
+</head>
+<body>
+    <h1>Cel projektu</h1>
+    <p>Celem projektu jest analiza dwóch zbiorów dokumentów na wybrany temat, w którym można wyróżnić dwie odrębne tematy/kategorie/grupy oraz książek tego samego autora.</p>
+
+    <h2>Etapy projektu</h2>
+    <ol>
+        <li>
+            <h3>Przygotowanie korpusu tekstowego</h3>
+            <p>Poprzez oczyszczenie i normalizację tekstu oraz redukcję rzadkości macierzy wystąpień.</p>
+        </li>
+        <li>
+            <h3>Przygotowanie chmur słów</h3>
+            <p>Słów występujących jednocześnie we wszystkich dokumentach oraz unikatowych słów występujących tylko w poszczególnych dokumentach.</p>
+        </li>
+        <li>
+            <h3>Sprawdzenie przyjętych kategorii/grup</h3>
+            <p>Odzwierciedlających przyjętą dychotomię w badanych dokumentach, wykorzystując grupowanie i modele wątków.</p>
+        </li>
+        <li>
+            <h3>Budowa klasyfikatorów</h3>
+            <p>Z wykorzystaniem algorytmu klasyfikacji: binarnego, logarytmicznego i TfIdf.</p>
+        </li>
+        <li>
+            <h3>Wybór najlepszego klasyfikatora</h3>
+            <p>Na podstawie miar wyliczonych z macierzy pomyłek oraz interpretacja wyników.</p>
+        </li>
+        <li>
+            <h3>Wyznaczenie wskaźnika polaryzacji nastroju</h3>
+            <p>Dla badanych dokumentów.</p>
+        </li>
+    </ol>
+</body>
+</html>
 
