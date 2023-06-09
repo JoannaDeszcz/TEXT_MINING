@@ -1,0 +1,1284 @@
+---
+title: "Projekt: Analiza porównawcza książek Marka Twaina"
+subtitle: "Przedmiot: Text miming"
+author: "Autor:Joanna Deszcz"
+date: "Data: 10.05.2023"
+output:
+  html_document:
+    df_print: paged
+---
+
+# ANALIZA TEKSTU
+
+Celem projktu jest analiza dwóch zbiorów dokumentów na wybrany temat, w którym można wyróżnić dwie odrębne tematy/kategorie/grupy oraz książek tego samego autora.
+
+***Etapy projektu***
+
+1.  Przygotowanie korpusu tekstowego poprzez oczyszczenie i normalizację tekstu oraz redukcję rzadkości macierzy wystąpień.
+
+2.  Przygotowanie chmur słów: słów występujących jednocześnie we wszystkich dokumentach oraz unikatowych słów występujących tylko w poszczególnych dokumentach.
+
+3.  Sprawdzenie, czy przyjęte kategorie/grupy odzwierciedlające przyjętą dychotomię występują w badanych dokumentach, wykorzystując grupowanie i modele wątków.
+
+4.  Budowa trzech klasyfikatorów z wykorzystaniem algorytmu klasyfikacji: binarnego, logarytmicznego i TfIdf.
+
+5.  Wybór najlepszego klasyfikatora na podstawie miar wyliczonych z macierzy pomyłek oraz interpretacja wyników.
+
+6.  Wyznaczenie wskaźnika polaryzacji nastroju dla badanych dokumentów.
+
+### Przygotowanie środowiska
+
+#### Biblioteki
+
+```{r message=FALSE, warning=FALSE}
+library(stringr)
+library(stringi)
+library(rmarkdown)
+library(dplyr)
+library(textstem)
+library(wordcloud)
+library(tidytext)
+library(udpipe)
+library(tm)
+library(topicmodels)
+library(quanteda)
+library(ggplot2)
+library(tidyr)
+library(rmdformats)
+library(RColorBrewer)
+library(SnowballC)
+library(textstem)
+library(tidyverse)
+library(proxy)
+library(dendextend)
+library(udpipe)
+library(knitr)
+library(kableExtra)
+library(LDAvis)
+library(e1071)
+library(sentimentr)
+library(caret)
+
+
+```
+
+### Dane
+
+W projekcie wykorzystano dane pochodzące z dwóch książek autorstwa Marka Twaina: "The Adventures of Tom Sawyer" oraz "Adventures of Huckleberry Finn".
+
+"The Adventures of Tom Sawyer" (Przygody Tomka Sawyera) opowiada historię młodego chłopca imieniem Tom Sawyer, który mieszka w małym miasteczku nad rzeką Missisipi. Książka przedstawia jego przygody i perypetie wraz z przyjaciółmi, takimi jak Huckleberry Finn i Becky Thatcher. Opiera się na odkrywaniu i eksploracji dziecięcego świata przygód. Tom i jego przyjaciele, poszukują emocji i niezapomnianych doświadczeń, które przynoszą im radość i spełnienie
+
+"Adventures of Huckleberry Finn" (Przygody Hucka Finna) jest kontynuacją historii Tomka Sawyera. Opowiada o przygodach Huckleberry'ego Finna, który ucieka od brutalnego ojca i wyrusza w podróż po rzece Missisipi na tratwie w towarzystwie niewolnika imieniem Jim.
+
+Korzystając z danych zawartych w tych dwóch książkach, projekt mógł wykorzystać różne elementy fabuły i charakterystyczne cechy postaci przedstawione w tych dziełach.
+
+Dane wykorzystane w projekcie zostały pobrane ze strony internetowej "Gutenberg" i poddane procesowi przetwarzania przy użyciu narzędzi języka R. W celu ułatwienia dalszej pracy nad danymi, w procesie przetwarzania wykorzystano przede wszytstkim bibliotekę *tidytext*. Dzięki temu możliwe było bardziej efektywne zarządzanie i analizowanie danych w kolejnych etapach projektu.
+
+## KORPUS
+
+### Przygotowanie danych
+
+#### **Wczytanie danych**
+
+Dane zostały wczytane przy użyciu wektora danych do zmiennej *book_1* dla ksiązki "The Adventures of Tom Sawyer oraz *book_2* dla książki"Adventures of Huckleberry Finn".
+
+```{r}
+book_1 <- readLines("The-Adventures-of-Tom-Sawyer.txt")%>%
+  unlist() %>%
+  data.frame(line = 1:length(.), text = ., stringsAsFactors = FALSE)
+
+book_2 <- readLines("Adventures-of-Huckleberry-Finn.txt")%>%
+  unlist() %>%
+  data.frame(line = 1:length(.), text = ., stringsAsFactors = FALSE)
+```
+
+#### **Czyszczenie tekstu**
+
+Funkcja *clean_book* korzysta z bibliotek **stringr** oraz **dplyr** w celu wyczyszczenia tekstu. Wykonuje ona szereg operacji, takich jak:
+
+-   *usuwanie podwójnych spacji i znaków kontrolnych (np. tabulatory, znaki nowej linii,*
+
+-   *usuwanie specjalnych znaków, takich jak znak dolara czy znak większości/mniejszości,*
+
+-   usuwanie cyfr itp.
+
+Celem tych operacji jest usunięcie niepotrzebnych znaków i wyrazów z tekstu, co ułatwia jego analizę i przetwarzanie.
+
+```{r}
+clean_book <- function(book) {
+  book_temp <- book %>%
+    mutate(text = str_replace_all(text, "\\s{2,}", " ")) %>%
+    mutate(text = str_replace_all(text, "[:cntrl:]", " ")) %>%
+    mutate(text = str_remove_all(text, "[\\$\\+\\<\\=\\-\\>\\^\\_\\&\\#\\%\\~\\|]")) %>%
+    mutate(text = str_remove_all(text, "\\d")) %>%
+    mutate(text = str_remove_all(text, "[IVXLCDM]+")) %>%
+    mutate(text = str_replace_all(text, "\\b(’s|’t|’n)\\b", "")) %>%
+    mutate(text = str_remove_all(text, "\\b\\w+s\\b")) %>%
+    mutate(text = str_remove_all(text, "[0-9]")) %>%
+    mutate(text = str_trim(text)) %>%
+    filter(text != "") %>%
+    mutate(line = row_number())
+
+  return(book_temp)
+}
+
+
+cleaned_book_1 <- clean_book(book_1)
+cleaned_book_2 <- clean_book(book_2)
+
+```
+
+**Tokenizacja**
+
+W dalszym etapie przetwarzania tekstu wykorzystywana jest funkcja **unnest_tokens** z pakietu *tidytext*, która realizuje tokenizację tekstu zgodnie z zasadami tidy data. Funkcja ta dzieli tekst na pojedyncze słowa lub tokeny, usuwając jednocześnie białe znaki i znaki interpunkcyjne, a następnie umieszcza każde słowo w osobnym wierszu. Dzięki temu możliwe jest łatwe zliczanie wystąpień słów oraz ich analiza.
+
+Po wykonaniu funkcji, powstają nowe dataframes o nazwie ***book_1\_tokens*** oraz ***book_1\_tokens***, każy zawiera dwie kolumny: *`line`*, zawierającą numer linii tekstu, i *`word`*, zawierającą pojedyncze słowa z tej linii.
+
+```{r}
+book_1_tokens <- cleaned_book_1 %>%
+  unnest_tokens(word, text)
+
+
+book_2_tokens <- cleaned_book_2 %>%
+  unnest_tokens(word, text)
+
+```
+
+**Stopwords**
+
+W kolejnym kroku zostaje utworzona lista **stopwords** zawierająca słowa-klucze w języku angielskim, które mają zostać usunięte z tekstu. Jest to częsty krok w analizie tekstu, ponieważ pewne słowa, takie jak "and", "also" czy "as", nie mają dużego znaczenia w kontekście analizy tekstu i tylko wprowadzają szum do danych.
+
+```{r}
+stopwords <- c("a", "able", "about", "across", "after", "all", "almost", "also", "am", "among", "an", "and", "any", "are", "as", "at", "be", "because", "been", "but", "by", "can", "cannot", "could", "dear", "did", "do", "does", "either", "else", "ever", "every", "for", "from", "get", "got", "had", "has", "have", "he", "her", "hers", "him", "his", "how", "however", "i", "if", "in", "into", "is", "it", "its", "just", "least", "let", "like", "likely", "may", "me", "might", "most", "must", "my", "neither", "no", "nor", "not", "of", "off", "often", "on", "only", "or", "other", "our", "own", "rather", "said", "say", "says", "she", "should", "since", "so", "some", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "tis", "to", "too", "twas", "us", "wants", "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "would", "yet", "you", "your","aaton","aabaa","hapter","aamen", "ab","tom","tom's","de","en","it's","oh","jim","ain","that","don", "what","joe","didn","wouldn","couldn","becky","beckys","potter","uz","mo","yo","towards","dah","um","jis")
+
+stopwords_df <- data.frame(word = stopwords)
+
+```
+
+Do standardowego stopwords dodano slowa takie jakie: imion(tom, becky, joe,potter), operatory czasu, słowa, które są westchnieniem bądź krzykiem czy odgłosami, oraz wyraz pytający - what , aby nie wprowadzałt szumu do danych.
+
+Kolejnym krokiem jest usunięcie stopwords z tekstu za pomocą funkcji ***anti_join()*****.** W ramach tej operacji, tylko te wiersze z ramki danych *`book_1_tokens`* oraz *`book_2_tokens`*, których wartość w kolumnie *`word`* nie występuje w rammce ***stopwords*** w kolumnie *`word`* - są zwracane. W ten sposób usuwane są słowa, które nie niosą istotnej wartości z punktu widzenia analizy tekstu, takie jak "and", "also", "as" itp.
+
+```{r}
+
+book_1_stop <- anti_join(book_1_tokens, stopwords_df, by = c("word" = "word"))
+book_2_stop <- anti_join(book_2_tokens, stopwords_df, by = c("word" = "word"))
+```
+
+**Lemmatyzacja**
+
+W kodzie zastosowano proces lematyzacji, który polega na sprowadzeniu słowa do jego podstawowej formy - *lematu*. Dzięki temu możliwe jest ujednolicenie różnych odmian tego samego słowa i traktowanie ich jako jednego słowa, co ułatwia analizę tekstu. W przeciwieństwie do stemmingu, lematyzacja korzysta z reguł gramatycznych danego języka, które pozwalają na uzyskanie bardziej dokładnych wyników.
+
+Do lematyzacji słów w kolumnie `word` wykorzystano funkcję **lemmatize_words()**. Wynikowa lista lematów została zapisana w nowej kolumnie o nazwie `word_lemma.`
+
+```{r}
+book_1_lem <- book_1_stop %>%
+  mutate(word_lemma = lemmatize_words(word, language = "english")) %>%
+  mutate(word_lemma = gsub("\\d", "", word_lemma))
+
+# Lemmatyzacja i usunięcie cyfr dla book_2
+book_2_lem <- book_2_stop %>%
+  mutate(word_lemma = lemmatize_words(word, language = "english")) %>%
+  mutate(word_lemma = gsub("\\d", "", word_lemma))
+
+```
+
+## Macierze wystąpień
+
+Pierwszym etapem tworzenia macierzy jest stworzenie tabeli book_1\_2_df - p ołączenie danych z dwóch różnych źródeł, reprezentujących książki " The Adventures of Tom Sawyer" i " The Adventures of Huckleberry Finn". Dokonano tego za pomocą funkcji **`bind_rows()`**, która umożliwia połączenie wierszy z różnych tabel w jedną tabelę.
+
+Konkretnie, dane związane z lematyzacją słów z obu książek zostały przetworzone i dopasowane do określonego formatu. Następnie, za pomocą funkcji **`mutate()`**, dodano nową kolumnę "document", w której każdy wiersz został oznaczony nazwą odpowiedniej książki ("Tom Sawyer" dla danych z książki "The Adventures of Tom Sawyer" i "Huckleberry Finn" dla danych z książki "The Adventures of Huckleberry Finn").
+
+Po wykonaniu tych kroków, dane z książek zostały połączone w jedną tabelę o nazwie book_1\_2_df. Każdy wiersz w tej tabeli reprezentuje jedno zdanie z jednej z książek, a kolumny zawierają informacje o dokumencie, linii oraz lematyzowanych formach słów.
+
+### Połączenie zmiennych w jedną tabelę
+
+```{r}
+book_1_2_df <- bind_rows(
+  mutate(book_1_lem, document = "Tom Sawyer"),
+  mutate(book_2_lem, document = "Huckleberry Finn")
+)
+
+book_1_2_df <- book_1_2_df[, c("document", "line", "word_lemma")]
+
+book_1_2 <- tibble(book_1_2_df)
+book_1_2 <- book_1_2 %>% rename(word = word_lemma)
+```
+
+### Przygotowanie tabeli document-term
+
+Po połączeniu danych z książek "Tom Sawyer" i "Huckleberry Finn" w tabeli book_1\_2_df, kolejnym etapem było przygotowanie macierzy dokument-słowo (document-term).W ramach tego etapu, zastosowano pogrupowanie według poszczególnych dokumentów za pomocą funkcji **`group_by(document)`**, zliczono wystąpienia poszczególnych słów (zapisanych w kolumnie *"*`word")` za pomocą funkcji **`count,`**oraz użyto funkcji `cast_tdm,` aby dane przekształcić w document-term matrix.
+
+```{r}
+book_1_2_dt <- book_1_2 %>% 
+  group_by(document)%>% 
+  count(word, line) %>% 
+  cast_tdm(word, line, n)
+
+book_1_2_dt
+```
+
+Po przeprowdzonej analizie można stwierdzić, że:
+
+-   macierz zawiera 6955 unikalnych terminów (słów) i 9 077 dokumentów linijek w analizowanym zbiorze danych,
+
+-   w macierzy jest 74146 niezerowych (non-sparse) wpisów, co oznacza, że tyle jest różnych kombinacji słowo-dokument, gdzie występuje co najmniej jedno wystąpienie danego terminu w danym dokumencie. Pozostałe 630563892 wpisy są rzadkie (sparse) i wynikają z braku wystąpień danego terminu w danym dokumencie,
+
+-   macierz jest w pełni rzadka (100%), czyli większość wpisów w macierzy jest zerowa,
+
+-   najdłuższy termin (słowo) w macierzy ma maksymalną długość 25 znaków,
+
+-   wartości w macierzy są obliczane na podstawie częstości wystąpień terminów (słów) w poszczególnych dokumentach. Innymi słowy, waga (liczba) danego terminu w danym dokumencie jest określana na podstawie liczby jego wystąpień w tym dokumencie.
+
+### Macierz feature-document (FDM)
+
+Po utworzeniu macierzy dokument-cecha (DFM), kolejnym etapem analizy jest tworzenie macierzy cecha-dokument (feature-document matrix, FDM). Macierz FDM jest odwrotnością macierzy DFM, gdzie wiersze reprezentują cechy (słowa) i kolumny reprezentują dokumenty.
+
+```{r}
+book_1_2_fdm <- book_1_2 %>%
+  count(document, word, line) %>%
+  cast_dfm(word, document, n )
+
+# Wyświetlanie wynikowej macierzy feature-document
+book_1_2_fdm
+
+```
+
+### Macierz TF-IDF
+
+Kolejnym etapem analizy tekstu po utworzeniu macierzy cecha-dokument (FDM) jest zastosowanie ważenia tf-idf (term frequency-inverse document frequency) do obliczenia wartości w macierzy.
+
+Macierz tf-idf reprezentuje zatem wartości tf-idf dla każdego terminu (słowa) i dokumentu. Waga tf-idf informuje o istotności danego terminu w konkretnym dokumencie w kontekście całego korpusu.
+
+```{r}
+book_1_2_tfidf <- dfm_tfidf(book_1_2_fdm)
+
+book_1_2_tfidf
+```
+
+Na podstawie przedstawionej macierzy dokument-cecha można stwierdzić, że w analizowanym korpusie tekstowym występują dwa dokumenty: "Huckleberry Finn" i "Tom Sawyer". W macierzy przedstawione są wartości dla dwóch cech (słów) dla każdego z tych dokumentów.
+
+Dla cechy "abarking", wartość wynosi 0.2200343 dla dokumentu "Huckleberry Finn" i 0 dla dokumentu "Tom Sawyer". Oznacza to, że termin "abarking" występuje w dokumencie "Huckleberry Finn", ale nie występuje w dokumencie "Tom Sawyer".
+
+Podobnie, dla cech "abeaming", "abear", "abegging" i "abilin" wartości dla dokumentu "Huckleberry Finn" wynoszą 0.22200343, podczas gdy dla dokumentu "Tom Sawyer" są równe 0. Sugeruje to, że te terminy występują tylko w dokumencie "Huckleberry Finn" i nie występują w dokumencie "Tom Sawyer".
+
+Na podstawie tych wartości można wyciągnąć wniosek, że niektóre cechy (słowa) są charakterystyczne dla konkretnego dokumentu. W przypadku analizy tych dwóch dokumentów, terminy "abarking", "abeaming", "abear", "abegging" i "abilin" są unikalne dla dokumentu "Huckleberry Finn" i nie występują w dokumencie "Tom Sawyer".
+
+# CHMURY SŁÓW
+
+Chmura słów (ang. word cloud) to wizualizacja, która prezentuje częstość występowania słów w tekście. Polega ona na umieszczeniu słów w chmurze, gdzie wielkość każdego słowa zależy od jego częstości w tekście - im częściej występuje, tym większe jest umieszczone w chmurze.
+
+W poniższym kodzie najpierw zliczono liczbę wystąpień danych termów z każdej książki i posortowano je malejąco po liczbie wystąpień. Następnie na podstawie tej listy można przygotować wykres kolumnowy oraz chmurę słów, gdzie wielkość każdego słowa zależy od liczby wystąpień w tekście.
+
+W tym konkretnym przypadku zastosowano kilka podejść do analizy chmur słów. Przygotowano chmury osobno dla każdego tekstu, co pozwala na lepsze zobrazowanie charakterystycznych słów dla danego tekstu. Dodatkowo przygotowano chmurę słów dla słów występujących jednocześnie w obu tekstach, co umożliwia porównanie częstości występowania tych słów w obu tekstach. Wreszcie przygotowano również chmurę słów dla unikatowych słów występujących tylko w poszczególnych dokumentach, co pozwala na lepsze zrozumienie charakteru każdej z książek.
+
+## Wordcloud dla każdej książki
+
+### Zliczanie wystąpień
+
+```{r}
+book_1_word_count <- book_1_lem%>%
+  count(word_lemma, sort = TRUE)
+
+book_2_word_count <- book_2_lem%>%
+  count(word_lemma, sort = TRUE)
+```
+
+### Wizualizacja dla The Adventures of Tom Sawyer
+
+#### Wykres kolumnowy
+
+```{r}
+
+book_1_plot <- ggplot(book_1_word_count[1:10,], aes(x = word_lemma, y = n)) +
+  geom_col(fill = "grey") +
+  labs(title = 'The Adventures of Tom Sawyer',
+       x = "Słowa",
+       y = "Liczba wystąpień")
+book_1_plot
+
+```
+
+#### Wordcloud
+
+```{r}
+my_colors <- colors()[grDevices::col2rgb(colors()) < 128]
+
+if (length(my_colors) < 100) {
+  warning("błąd")
+}
+
+my_colors <- sample(my_colors, 100)
+```
+
+```{r}
+book_1_plot <- wordcloud(words = book_1_word_count$word, 
+          freq = book_1_word_count$n, 
+          max.words = 50, 
+          random.order = FALSE,
+          colors = my_colors, 
+          scale = c(3,.2),
+          main = "The Adventures of Tom Sawyer'")
+title(main = "The Adventures of Tom Sawyer'")
+
+```
+
+Chmura dla: The Adventures of Tom Sawyer
+
+Na podstawie chmury słów dla książki "The Adventures of Tom Sawyer" możemy wyróżnić trzy najczęściej występujące słowa: "go", "good" i "up".
+
+Słowo "go" sugeruje, że podróże i eksploracja są ważnym elementem tej książki. Bohaterowie prawdopodobnie często przemieszczają się w różne miejsca, co może prowadzić do różnych przygód i wydarzeń.
+
+Słowo "good" wskazuje na obecność pozytywnych wartości i postaw w książce. Może to oznaczać, że główny bohater jest moralny, podejmuje dobre decyzje lub spotyka innych postaci o dobrych cechach. Może również odnosić się do ogólnego tonu i przesłania książki, które mogą być pozytywne i optymistyczne.
+
+Słowo "up" może wskazywać na elementy takie jak podnoszenie się, awans, wzrost lub zwiększenie aktywności. Może to odnosić się do rozwoju i dojrzewania bohaterów, pokonywania wyzwań lub osiągania sukcesów.
+
+Te słowa sugerują dynamiczność, pozytywne wartości i przygody obecne w książce "The Adventures of Tom Sawyer".
+
+Dodatkowo, na podstawie chmury słów dla książki "The Adventures of Tom Sawyer", można zauważyć jeszcze kilka innych istotnych słów: "come", "huck", "now" i "out".
+
+Słowo "come" sugeruje ruch, przyjście lub przybycie postaci do różnych miejsc w książce. Może to wskazywać na zmiany w fabule, pojawianie się nowych bohaterów lub rozwijanie się wątków narracyjnych.
+
+Słowo "huck" może odnosić się do dźwięku intensywnych uderzeń lub odgłosów, sugerować, że w powieści występują opisy lub sceny, w których takie dźwięki mają znaczenie lub są istotne dla atmosfery lub akcji.
+
+Słowo "now" sugeruje czas teraźniejszy i natychmiastowość. Może to wskazywać na szybkie tempo narracji, akcję rozgrywającą się w "teraz" oraz podejmowanie nagłych decyzji i działań przez bohaterów.
+
+Słowo "out" może oznaczać wyjście, opuszczenie lub przebywanie na zewnątrz. Może to sugerować, że część wydarzeń w książce rozgrywa się poza domem lub w naturalnym środowisku, na przykład w przyrodzie.
+
+Te słowa dodatkowo uzupełniają obraz książki "The Adventures of Tom Sawyer", sugerując różnorodne wątki fabularne, interakcje między postaciami i różne ujęcia przestrzeni oraz czasu.
+
+### Wizualizacja dla Adventures of Huckleberry Finn
+
+#### Wykres kolumnowy
+
+```{r}
+book_2_plot <- ggplot(book_2_word_count[1:10,], aes(x = word_lemma, y = n)) +
+  geom_col(fill = "grey") +
+  labs(title = 'Adventures of Huckleberry Finn',
+       x = "Słowa",
+       y = "Liczba wystąpień")
+book_2_plot
+```
+
+#### Wordcloud
+
+```{r}
+book_2_plot <- wordcloud(words = book_2_word_count$word, 
+          freq = book_2_word_count$n, 
+          max.words = 50, 
+          random.order = FALSE,
+          colors = my_colors,
+          scale = c(3,.2),
+          main = "Adventures of Huckleberry Finn")
+title(main = "Adventures of Huckleberry Finn")
+
+```
+
+Chmura dla: Adventures of Huckleberry Finn
+
+Analizując powstałą chmurę słów dla książki "Adventures of Huckleberry Finn", można zauważyć, że najczęściej występującymi słowami są "go", "good", "out" i "up". Ta obserwacja sugeruje, że w książce często pojawiają się opisy akcji, przemieszczanie się bohaterów oraz pozytywne oceny i emocje.
+
+Słowo "go" wskazuje na to, że bohaterowie często wyruszają w różne miejsca lub podejmują działania. "Good" sugeruje, że w książce przedstawiane są pozytywne sytuacje lub bohaterowie wykazują dobre zachowanie. "Out" może wskazywać na częste wychodzenie na zewnątrz lub opuszczanie określonych miejsc - np. ucieczka Finna od swojego brutalnego ojca. "Up" może odnosić się do podnoszenia się, np. bohaterowie wchodzą na drzewa lub pokonują przeszkody.
+
+Te często występujące słowa sugerują, że w książce "Adventures of Huckleberry Finn" akcja jest dynamiczna, pełna pozytywnych emocji i przygód. Słowa te mogą odzwierciedlać główne wątki i tematy poruszane w książce, takie jak odkrywanie świata, przyjaźń i rozwój bohatera.
+
+Oprócz wcześniej wymienionych słów ("go", "good", "out", "up"), często występują również słowa "see", "down", "come", "make", "one" i "take".
+
+Słowo "see" wskazuje na obecność obserwacji, spostrzeżeń i oglądania w książce. "Down" może odnosić się do schodzenia w dół lub opuszczania. "Come" sugeruje ruch w stronę czegoś lub pojawianie się. "Make" może oznaczać tworzenie, wykonywanie czegoś lub wpływanie na coś. "One" może odnosić się do pojedynczej osoby lub czegoś jednego. "Take" wskazuje na branie czegoś lub podejmowanie jakiejś akcji.
+
+Te dodatkowe słowa również wzbogacają obraz książki "The Adventures of Tom Sawyer" i mogą sugerować różnorodne wydarzenia, akcje i interakcje między bohaterami.
+
+------------------------------------------------------------------------
+
+## Wordcloud termów występujących w porównywanych książkach jednocześnie
+
+### Zliczanie wystąpień
+
+Znalezienie elementów, które występują w obu wektorach
+
+```{r}
+common_words <- intersect(book_1_lem$word_lemma, book_2_lem$word_lemma)
+```
+
+Zliczenie liczby wystąpień każdego termu w obu książkach
+
+```{r}
+book_1_word_count <- table(book_1_lem$word_lemma)[common_words]
+book_2_word_count <- table(book_2_lem$word_lemma)[common_words]
+```
+
+Sumowanie liczby wystąpień termów w obu książkach
+
+```{r}
+total_word_count <- book_1_word_count + book_2_word_count
+
+```
+
+### Wordcloud
+
+```{r}
+# Sprawdzenie i uzupełnienie brakujących wartości w total_word_count
+total_word_count[is.na(total_word_count)] <- 0
+
+# Tworzenie chmury słów
+wordcloud(words = common_words, freq = total_word_count, 
+          max.words = 50, random.order = FALSE, 
+          colors = my_colors, scale = c(3, 0.3),
+          cex.main = 0.8, min.freq = 1)
+
+# Dodaj tytuł
+title('Termy wspólne dla książek "The Adventures of Tom Sawyer" i "Adventures of Huckleberry Finn"', line = -2, outer = TRUE, cex.main = 0.90)
+
+```
+
+W kontekście wspólnych termów dla książek "The Adventures of Tom Sawyer" i "Adventures of Huckleberry Finn", można zauważyć, że najczęściej występującymi słowami są: "go", "good", "out" i "up".
+
+Słowo "go" może odnosić się do podróży, eksploracji lub akcji. W obu książkach główni bohaterowie często wyruszają w różne przygody, podróżując i odkrywając nowe miejsca.
+
+Słowo "good" może oznaczać coś pozytywnego, wartościowego lub sprawiającego przyjemność. Może to odnosić się do postaw i charakterów bohaterów, a także do pozytywnych aspektów wydarzeń i sytuacji przedstawionych w obu książkach.
+
+Słowo "out" może odnosić się do opuszczenia, wyjścia lub wyjścia na zewnątrz. W obu książkach bohaterowie często wychodzą na zewnątrz, wyruszają w podróż, opuszczają swoje domy lub stawiają czoła przygodom na otwartym terenie.
+
+Słowo "up" może odnosić się do wzrostu, podniesienia się lub poprawy. Może to odzwierciedlać postęp bohaterów, zarówno emocjonalny, jak i społeczny, oraz ich dążenie do osiągnięcia lepszej sytuacji lub lepszego życia.
+
+Te słowa mogą odzwierciedlać tematykę przygód, pozytywnych wartości, dążenie do zmiany i odkrywania nowych rzeczy, które są obecne w obu książkach. Jednocześnie, interpretacja tych słów w kontekście konkretnych scen i wydarzeń w poszczególnych książkach może różnić się i być jeszcze bardziej precyzyjna.
+
+Wato zwrócić uwagę, że także słowa takie jak: "come","see","make","down","now" występują dosyśc częto.
+
+"Come" - To słowo może odnosić się do akcji bohaterów przybywających w różne miejsca, do dołączania do innych postaci lub do zaczynania nowych przygód. Może także wskazywać na chęć eksploracji nowych miejsc i odkrywania czegoś nieznanego.
+
+"See" - Odnosi się do akcji obserwowania, spoglądania lub dostrzegania czegoś. Może to wskazywać na ważną rolę obserwacji i dostrzegania szczegółów w fabule, a także na ciekawość i chęć poznawania nowych rzeczy.
+
+"Make" - To słowo może odnosić się do tworzenia, wytwarzania, budowania czegoś. Może to sugerować, że w obu książkach bohaterowie często angażują się w działania, które prowadzą do stworzenia czegoś nowego, rozwiązania problemów lub osiągnięcia celów.
+
+"Down" - Może odnosić się do ruchu w dół, zstępowania lub schodzenia z czegoś. W kontekście tych książek, może to wskazywać na sytuacje, w których bohaterowie muszą stawić czoła trudnościom, pokonywać przeszkody lub znaleźć się w trudnych sytuacjach.
+
+"Now" - Odnosi się do teraźniejszości, aktualnego czasu lub natychmiastowej akcji. Może to wskazywać na dynamiczność i żywiołowość wydarzeń w obu książkach, gdzie bohaterowie są często angażowani w szybkie akcje i podejmują decyzje "teraz" w trudnych sytuacjach.
+
+------------------------------------------------------------------------
+
+## Wordcloud unikatowych słów występujących tylko w poszczególnych dokumentach.
+
+### Zliczanie wystąpień
+
+```{r}
+termy <-unlist(book_1_lem$word_lemma)
+termy2 <-unlist(book_2_lem$word_lemma)
+
+tylko_book_1 <- setdiff(termy, termy2)
+tylko_book_2 <- setdiff(termy2, termy)
+
+tylko_book_1_word_count <- table(termy)[tylko_book_1]
+tylko_book_2_word_count <- table(termy2)[tylko_book_2]
+```
+
+### Wordcloud dla Adventures of Tom Sawyer
+
+```{r}
+book_1_plot <- wordcloud(words = names(tylko_book_1_word_count),
+                         freq = tylko_book_1_word_count,
+                         max.words = 50,
+                         random.order = FALSE,
+                         colors = my_colors,
+                         scale = c(3, 0.5),
+                         main = "Unikatowe termy dla książki 'The Adventures of Tom Sawyer'")
+title(main = "The Adventures of Tom Sawyer")
+
+```
+
+Analiza WordCloud dla książki "The Adventures of Tom Sawyer" ujawnia pewne interesujące różnice w terminologii w porównaniu do innych książek. Istnieje kilka unikalnych terminów, które wyróżniają się w tym kontekście, przede wszystkim "presently"
+
+Termin "presently" odnosi się do momentu lub chwili obecnej. W przypadku tej książki, może to oznaczać, że narracja jest bardziej skoncentrowana na opisie aktualnych wydarzeń i postaci, nadając historii dynamizmu i przyspieszenia. Może to być związane z stylem narracji autora, gdzie czytelnik jest wprowadzany w bieżącą sytuację, a akcja rozwija się w tempie, które wywołuje wrażenie żywiołowego działania. Wyraz "presently" sugeruje, że wydarzenia mają miejsce teraz, a to może wpływać na sposób, w jaki czytelnik odbiera i angażuje się w historię.
+
+### Wordcloud dla Adventures of Huckleberry Finn
+
+```{r}
+book_2_plot <- wordcloud(words = names(tylko_book_2_word_count),
+                         freq = tylko_book_2_word_count,
+                         max.words = 50,
+                         random.order = FALSE,
+                         colors = my_colors,
+                         scale = c(3, 0.4),
+                         main = "Unikatowe termy dla książki 'Adventures of Huckleberry Finn'")
+title(main = "The Adventures of Huckleberry Finn")
+
+
+```
+
+Analizując chmurę możemy zauważyć, że charakterystycznymi dla niej termami są np.: "duke", "dat".
+
+Analizując chmurę słów, zauważamy, że terminy "duke" i "dat" są charakterystycznymi wyrazami w tej chmurze. Oznacza to, że występują one częściej lub mają większą wagę w porównaniu do innych terminów obecnych w analizowanym tekście.
+
+Termin "duke" sugeruje obecność postaci o tytule książęcym lub odnosi się do samego tytułu książęcego. Może to wskazywać na istnienie bohatera lub ważnej postaci związanej z arystokracją, elitą społeczną lub innymi aspektami związanych z hierarchią i władzą. Obecność tego terminu w chmurze słów sugeruje, że temat tytułu książęcego lub arystokracji ma znaczenie w analizowanym tekście.
+
+Termin "dat" może mieć kilka możliwych interpretacji. W kontekście analizowanego tekstu, termin ten może wskazywać na częste występowanie informacji datowych lub odniesień czasowych. Może to oznaczać, że czas, chronologia lub określone okresy mają duże znaczenie dla treści analizowanego tekstu.
+
+# GRUPOWANIE
+
+### Przygotowanie danych
+
+#### Wczytanie danych
+
+Analiza dychotomiczna została przeprowadzona w podziale na rozdziały książek, co wymagało ponownego wczytania danych. Ponieważ analiza dychotomiczna polega na przyporządkowaniu danych do dwóch kategorii lub alternatyw, konieczne było uwzględnienie struktury rozdziałowej, aby móc dokładnie przeprowadzić analizę.
+
+Wczytanie danych od nowa wraz z uwzględnieniem rozdziałów umożliwiło precyzyjne określenie, które fragmenty danych należą do poszczególnych rozdziałów.
+
+```{r}
+book_1 <- readLines("The-Adventures-of-Tom-Sawyer.txt") %>%
+  paste(collapse = " ") %>%
+  strsplit(split = "(CHAPTER\\s+)", perl = TRUE) %>%
+  unlist()
+book_1_df <- data.frame(chapter = 0:(length(book_1)-1), text = book_1, stringsAsFactors = FALSE)
+book_1_df <- tail(book_1_df, -1)
+
+
+```
+
+```{r}
+book_2 <- readLines("Adventures-of-Huckleberry-Finn.txt") %>%
+  paste(collapse = " ") %>%
+  strsplit(split = "(CHAPTER\\s+)", perl = TRUE) %>%
+  unlist()
+book_2_df <- data.frame(chapter = 0:(length(book_2)-1), text = book_2, stringsAsFactors = FALSE)
+book_2_df <- tail(book_2_df, -1)
+
+```
+
+#### Czyszczenie
+
+Ze względu na ponowne wczytanie danych, konieczne było przeprowadzenie czyszczenia.
+
+\
+Proces czyszczenia tekstu za pomocą funkcji clean_book polegał na wykonaniu następujących czynności. Najpierw usunięto nadmiarowe spacje w tekście, zamieniając podwójne i więcej spacji na pojedyncze, co miało na celu poprawę czytelności. Następnie, znaki kontrolne zostały zamienione na spacje, aby wyeliminować potencjalne zakłócenia w analizie. Kolejnym krokiem było usunięcie określonych znaków specjalnych, które nie wnosiły istotnych informacji. Ostatecznie, usunięto cyfry, znaki interpunkcyjne i inne elementy, aby skoncentrować się na analizie samej treści książki, eliminując niepotrzebne elementy, które mogły wpływać na dokładność i spójność wyników.
+
+```{r}
+
+clean_book <- function(book) {
+  book_temp <- book %>%
+    mutate(text = str_replace_all(text, "\\s{2,}", " ")) %>%
+    mutate(text = str_replace_all(text, "[:cntrl:]", " ")) %>%
+    mutate(text = str_remove_all(text, "[\\$\\+\\<\\=\\-\\>\\^\\_\\&\\#\\%\\~\\|]")) %>%
+    mutate(text = str_remove_all(text, "[0-9]")) %>%
+    mutate(text = str_remove_all(text, "’[tns]")) %>%
+    mutate(text = str_remove_all(text, "[IVXLCDM]+")) %>%
+    mutate(text = str_trim(text)) %>%
+    filter(text != "") %>%
+    mutate(line = row_number())
+
+  return(book_temp)
+}
+
+
+cleaned_book_1 <- clean_book(book_1_df)
+cleaned_book_2 <- clean_book(book_2_df)
+
+```
+
+#### Tokenizacja
+
+Po przeprowadzeniu procesu czyszczenia tekstu, przystąpiono do kolejnego etapu, jakim było tokenizowanie.
+
+```{r}
+book_1_tokens <- cleaned_book_1 %>%
+  unnest_tokens(word, text)
+
+book_2_tokens <- cleaned_book_2 %>%
+  unnest_tokens(word, text)
+
+```
+
+#### Stopwords
+
+```{r}
+stopwords <- c("a", "able", "about", "across", "after", "all", "almost", "also", "am", "among", "an", "and", "any", "are", "as", "at", "be", "because", "been", "but", "by", "can", "cannot", "could", "dear", "did", "do", "does", "either", "else", "ever", "every", "for", "from", "get", "got", "had", "has", "have", "he", "her", "hers", "him", "his", "how", "however", "i", "if", "in", "into", "is", "it", "its", "just", "least", "let", "like", "likely", "may", "me", "might", "most", "must", "my", "neither", "no", "nor", "not", "of", "off", "often", "on", "only", "or", "other", "our", "own", "rather", "said", "say", "says", "she", "should", "since", "so", "some", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "tis", "to", "too", "twas", "us", "wants", "was", "we", "were", "what", "when", "where", "which", "while", "who", "whom", "why", "will", "with", "would", "yet", "you", "your","tom","jim","huck","ain","don")
+
+stopwords_df <- data.frame(word = stopwords)
+
+```
+
+Ze stopwords usunięto także imiona oraz operator pytania.
+
+```{r}
+book_1_stop <- anti_join(book_1_tokens, stopwords_df, by = c("word" = "word"))
+book_2_stop <- anti_join(book_2_tokens, stopwords_df, by = c("word" = "word"))
+
+```
+
+#### Lemmatyzacja
+
+```{r}
+book_1_lem <- book_1_stop %>%
+  mutate(word_lemma = lemmatize_words(word, language = "english")) %>%
+  select(chapter,word_lemma)
+
+
+book_2_lem <- book_2_stop %>%
+  mutate(word_lemma = lemmatize_words(word, language = "english")) %>%
+  select(chapter,word_lemma)
+
+```
+
+#### Łączenie ponowne książek
+
+Ten etap polegał na stworzeniu podsumowania lematyzowanych słów dla każdego rozdziału w ramach book_1\_lem i book_2\_lem. Dane zostały zgrupowane według rozdziału za pomocą funkcji **`group_by(chapter)`**. Następnie funkcja **`summarize()`** została użyta do stworzenia podsumowania, gdzie słowa lematyzowane (word_lemma) zostały sklejone w jedno zdanie za pomocą funkcji **`paste()`** i oddzielone spacją. Na końcu funkcja **`ungroup()`** została użyta, aby usunąć informacje o grupowaniu.
+
+```{r}
+# Summarize word_lemma
+book_1_summary <- book_1_lem %>%
+  group_by(chapter) %>%
+  summarize(text = paste(word_lemma, collapse = " ")) %>%
+  ungroup()
+
+book_2_summary <- book_2_lem %>%
+  group_by(chapter) %>%
+  summarize(text = paste(word_lemma, collapse = " ")) %>%
+  ungroup()
+```
+
+Natępnie dodano numerację rozdziałów dla książki 2, aby była ona kontunuacją numeracji rozdziałów w ksiązce 1. Połączono także ramki danych book_1\_summary i book_2\_summary w jedną ramkę danych o nazwie books_laczenie. To umożliwi dalszą analizę danych z uwzględnieniem podziału na rozdziały.
+
+```{r}
+book_2_summary$chapter <- book_2_summary$chapter + max(book_1_summary$chapter) + 1
+books_laczenie <- rbind(book_1_summary, book_2_summary)
+
+```
+
+Na końcu przekształcono kolumnę "text" z ramki danych books_laczenie na listę o nazwie books_list za pomocą funkcji **`as.list()`**. W rezultacie, każdy element listy books_list odpowiada zawartości kolumny "text" dla danego wiersza ramki danych.
+
+```{r}
+books_list <- as.list(books_laczenie$text)
+```
+
+## Grupowanie hierarchiczne
+
+Grupowanie hierarchiczne zaczyna się od utworzenia macierzy dokument-term. Macierz dokument-term jest strukturą danych, w której dokumenty są reprezentowane jako wiersze, a termy (słowa) jako kolumny.
+
+W kontekście analizy tekstu, macierz dokument-term jest tworzona poprzez zliczenie liczby wystąpień poszczególnych termów w każdym dokumencie. Na podstawie korpusu tekstowego, składającego się z kolekcji dokumentów, tworzy się macierz, gdzie wartości w komórkach reprezentują częstość występowania danego termu w danym dokumencie.
+
+Oprócz grupowania hierarchicznego, macierz dokument-term zostanie również wykorzystana do analizy wątków w tekście.
+
+#### Macierz dokument-term
+
+```{r}
+corpus <- VCorpus(VectorSource(books_list))
+
+dtm_tf <- DocumentTermMatrix(corpus, 
+                             control = list(bounds = list(global = c(2, Inf)),
+                                            removeSparseTerms = 0.99,
+                                            weighting = weightTf))
+
+dtm_tf  
+```
+
+Na podstawie wyników macierzy dokument - term można stwierdzić że:
+
+-   analizujemy zbiór 78 dokumentów, które zawierają 3979 unikalnych terminów,
+
+-   mamy łącznie 36146 niezerowych (niepustych) wpisów w macierzy, a pozostałe 274216 wpisy są puste (rzadkie),
+
+-   macierz jest rzadka, ponieważ 88% jej wpisów jest pustych,
+
+-   maksymalna długość terminu (słowa) w macierzy wynosi 15 znaków,
+
+-   waga termu jest obliczana na podstawie częstości występowania terminu (słowa) w danym dokumencie. Wagi są obliczane za pomocą metody częstości termu (term frequency - tf).
+
+    ```{r}
+    dtm_tf_m <-as.matrix(dtm_tf)
+
+    ```
+
+#### Normalizacja macierzy DTM
+
+```{r}
+dtm_norm <- t(scale(t(dtm_tf_m),
+                            center=FALSE,
+                            scale=sqrt(rowSums(dtm_tf_m^2))))
+```
+
+#### Grupowanie metodą k-means
+
+```{r}
+km <-kmeans(dtm_norm,2)
+```
+
+```{r}
+cluster_df <- data.frame(Dokument = rownames(dtm_norm), Cluster = km$cluster)
+
+ggplot(cluster_df, aes(x = reorder(Dokument, as.numeric(Dokument)), y = Cluster, color = factor(Cluster))) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("blue", "purple"), name = "Grupa", labels = c("1", "2")) +
+  labs(x = "Dokument", y = "Cluster", title = "Wyniki grupowania k-means dla dwóch grup") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+
+```
+
+Na podstawie wyników można wywnioskować, że:
+
+-   widoczne jest pogrupowanie rozdziałów dla danych książek: grupa 2 dla książki "The Adventures of Tom Sawyer"oraz grupa 1 dla książki "Adventures of Huckleberry Finn",
+
+-   dokument 25 należący do książki 1 "The Adventures of Tom Sawyer" jako jedyny powiązany jest z grupą 1, natomiast wszystkie inne rozdziały należą do grupy 2.
+
+## Analiza wątków
+
+Kolejnym etapem analizy książek "The Adventures of Tom Sawyer" i "Adventures of Huckleberry Finn" było przeprowadzenie analizy wątków, polegającej na identyfikowaniu głównych tematów i motywów występujących w tekście. Zastosowano podejście oparte na modelowaniu tematycznym (topic modeling).
+
+### Topic modeling
+
+Przy użyciu algorytmu LDA można było zidentyfikować główne tematy i motywy poruszane w obu tych książkach.
+
+Analiza tematyczna w tych dwóch książkach mogła dostarczyć głębszego zrozumienia głównych wątków, jak również ujawnić powiązania między nimi. Było to szczególnie ważne, biorąc pod uwagę, że obie książki zostały napisane przez Marka Twaina i mają wiele wspólnych elementów, takich jak bohaterowie, ustawienie w małym miasteczku nad rzeką czy tematyka dzieciństwa i przygód
+
+```{r}
+lda_topic <- LDA(dtm_tf, 2, control = list(seed = 1652))
+str(lda_topic)
+```
+
+Na podstawie tej analizy można wysnuć kilka wiosków, między inymi:
+
+-   W analizie zostały użyte dane z macierzy dokument-termin (dtm_tf) o rozmiarze 78 wierszy i 3979 kolumn. Macierz ta przedstawia wystąpienia słów w dokumentach.
+
+-   Algorytm LDA został uruchomiony z dwoma tematami (k = 2).
+
+-   W analizie użyto metody estymacji maksymalnej wariacyjnej (VEM).
+
+-   Lista "terms" zawiera 3979 słów, które zostały przypisane do tematów.
+
+-   Lista "documents" zawiera nazwy 78 dokumentów.
+
+    #### Dla obiektu klasy **LDA** wyświetlono kilka intersujących informacji:
+
+-   numer dokumentu z numerem prawdopodobnego wątku
+
+```{r}
+(tematy <- topics(lda_topic))
+```
+
+-   najistotniejszy term dla wątku
+
+```{r}
+(tematy_term <- terms(lda_topic))
+```
+
+Jak można zauważyć najważniejszym dla wątku 1 jest termem "good", natomiast dla wątku w jest term "boy".
+
+-   opis każdego dokumentu: nr wątku i najistotniejszy term
+
+```{r}
+tematy_term[tematy]
+```
+
+Natępnie w celu zachowania wszystkich istotnych informacji stworzono tabelę danych zawierjącą dokumenty(rozdziały), tekst dla każdego rozdzaiłu oraz przyporządkowany temat.
+
+```{r}
+tematy1_df <- tibble(dokument = 1:78, Tekst = books_list, Tematy=tematy_term[tematy])
+```
+
+#### Wizualizacja
+
+```{r}
+
+k <- function(data) {
+  kbl(data, booktabs = TRUE, digits = 7) %>% 
+    kable_paper("hover", full_width = F, bootstrap_options = "striped", font_size = 10)
+}
+
+```
+
+Natępnie przeanalizwoano bliżej termy charakterytyczne dla danego wątku.
+
+```{r}
+tematy_termy7 <- terms(lda_topic, 7)
+
+tematy_termy7 %>%
+  k() 
+```
+
+Na podstawie dostarczonych słów kluczowych dla tematów można wysnuć następujące wnioski.
+
+Temat 1:
+
+Na podstawie dostarczonych słów kluczowych dla tego tematu można wysnuć następujące wnioski. Wydaje się, że temat 1 dotyczy pewnej sytuacji lub zdarzenia, które mogło mieć pozytywny charakter. Słowo "good" sugeruje, że coś osiągnięte w sposób pozytywny. Słowo "out" może wskazywać na wyjście lub opuszczenie jakiegoś miejsca, a słowo "see" sugeruje obserwację lub dostrzeżenie czegoś. Może to wskazywać na sytuację, w której doszło do udanego spotkania lub doświadczenia. Słowa "come" i "down" mogą wskazywać na ruch lub zmianę położenia, być może ktoś przyszedł lub zejście czegoś na dół.
+
+Temat 2:
+
+Na podstawie dostarczonych słów kluczowych dla tego tematu można wysnuć następujące wnioski. Wydaje się, że temat 2 dotyczy pewnej osoby męskiej, prawdopodobnie chłopca. Słowo "boy" wskazuje na to, że jest mowa o młodym mężczyźnie. Słowo "good" może sugerować, że chłopiec ma dobre cechy lub że coś z nim jest w porządku. Słowa "now" i "time" wskazują na bieżący moment lub okres czasu. Słowa "come" i "out" sugerują, że chłopiec może się pojawiać lub wychodzić z jakiegoś miejsca. Słowo "much" może wskazywać na dużą ilość czegoś, być może chłopiec ma wiele do zrobienia lub jest bardzo aktywny.
+
+#### Paramter beta, a ważność termów
+
+W analizie tematycznej przy użyciu algorytmu LDA (Latent Dirichlet Allocation), informacje dotyczące ważności termów w danym temacie są przechowywane w parametrze o nazwie "beta".
+
+Na początku utworzono ramki danych **`beta_df`** dla każdego z wątków, która zawiera informacje na temat ważności terminów dla dwóch wątków (tematów) analizowanych przy użyciu algorytmu LDA.
+
+Każdy wiersz ramki danych reprezentuje jeden term (termin) związany z danym tematem. Kolumna "term" zawiera właśnie te terminy. Kolumna "wątek1" zawiera wykładnicze wartości ważności terminów dla pierwszego wątku, natomiast w drugiej ramce danych kolumna "wątek2" zawiera wykładnicze wartości ważności terminów dla drugiego wątku. Przez stworzenie takich ramek danych można łatwo zobaczyć, które terminy mają większą ważność w danym wątku. Im wyższa wartość w odpowiedniej kolumnie, tym większa jest ważność danego terminu w danym wątku.
+
+Stworzono także wspólną ramkę danych.
+
+```{r}
+beta_df <- data_frame(term = lda_topic@terms, wątek1 = exp(lda_topic@beta[1, ]), wątek2 = exp(lda_topic@beta[2, ]))
+
+beta_df <- beta_df[order(-beta_df$wątek1), ]
+```
+
+```{r}
+# Ramka danych dla wątku 1
+beta_df_wątek1 <- data.frame(term = beta_df$term, wątek1 = beta_df$wątek1)
+beta_df_wątek1$numer <- rank(-beta_df_wątek1$wątek1, ties.method = "min")
+beta_df_wątek1 <- beta_df_wątek1[order(-beta_df_wątek1$wątek1), ]
+# Ramka danych dla wątku 2
+beta_df_wątek2 <- data.frame(term = beta_df$term, wątek2 = beta_df$wątek2)
+beta_df_wątek2$numer <- rank(-beta_df_wątek2$wątek2, ties.method = "min")
+beta_df_wątek2 <- beta_df_wątek2[order(-beta_df_wątek2$wątek2), ]
+
+```
+
+**Wizualizacja ważności termów w wątkach**
+
+```{r}
+beta_tidy <- beta_df %>% 
+  pivot_longer(-term, names_to = "watek", values_to = "beta")
+
+beta_top <- beta_tidy %>% 
+  group_by(watek) %>% 
+  top_n(7, beta) %>% 
+  ungroup() %>% 
+  arrange(watek, -beta)
+```
+
+```{r}
+beta_top %>%
+  ggplot(aes(beta, tidytext::reorder_within(term, beta, watek), fill = watek)) +
+  geom_col(show.legend = FALSE) +
+  scale_fill_manual(values = c("lightblue", "purple")) +
+  facet_wrap(vars(watek), scales = "free_y") +
+  labs(x = "Termy") +
+  tidytext::scale_y_reordered() +
+  labs(x = expression(beta), y = NULL) +
+  theme_bw()
+
+```
+
+\
+Na podstawie podanego opisu wykresu, można wyciągnąć następujące wnioski dotyczące każdego z wątków:
+
+**Wątek 1 (reprezentowany przez kolor "lightblue"):**
+
+\- Najważniejszym terminem związanym z tym wątkiem jest słowo "good". Oznacza to, że temat 1 dotyczy czegoś pozytywnego, pochwalnego lub zadowalającego.
+
+\- Kolejnym ważnym terminem jest "out", co może sugerować opuszczenie lub wyjście z jakiegoś miejsca lub sytuacji.
+
+\- Słowo "see" sugeruje obserwację, spostrzeżenie lub spotkanie.
+
+\- "Come" wskazuje na ruch w kierunku lub przybycie do jakiegoś miejsca.
+
+\- "Down" może oznaczać ruch w dół lub zmniejszenie się czegoś.
+
+\- Słowo "one" może odnosić się do jednej osoby lub jednej rzeczy.
+
+\- "Make" sugeruje działanie, tworzenie lub wykonanie czegoś.
+
+**Wątek 2 (reprezentowany przez kolor "purple"):**
+
+\- Najważniejszym terminem związanym z tym wątkiem jest słowo "boy". Wskazuje to na młodego chłopca lub mężczyznę.
+
+\- "Good" sugeruje, że ten chłopiec posiada pozytywne cechy lub jest w dobrym stanie.
+
+\- "Now" wskazuje na bieżący moment lub aktualną sytuację.
+
+\- "Come" i "out" sugerują ruch, być może przyjście lub wyjście z jakiegoś miejsca.
+
+\- "Time" może odnosić się do okresu czasu lub sytuacji, która trwa.
+
+\- "Much" sugeruje dużą ilość czegoś.
+
+Następnie utworzono ramkę danych **`gamma_df`**, która zawiera informacje o dokumentach i ich przypisanych wartościach gamma dla poszczególnych tematów.
+
+```{r}
+lda_topic@gamma
+gamma_df <- data_frame(dokument = lda_topic@documents, wątek1 = lda_topic@gamma[, 1], wątek2 = lda_topic@gamma[, 2])
+
+```
+
+**Wizualizacja rozkładu wątków w dokumentach**
+
+Dokonano także wizualizacji rozkładu wątków w poszczególnych rozdziałach. Wykorzystując wartości gamma dla tematów, można zobaczyć jakie proporcje tematów występują w danym rozdziale.
+
+```{r}
+gamma_tidy <- gamma_df %>% 
+  pivot_longer(-dokument, names_to = "watek", values_to = "gamma")
+
+gamma_tidy %>% 
+  ggplot(aes(dokument, gamma, fill = watek)) + 
+  geom_col(position = "stack") +
+  scale_fill_manual(values = c("lightblue", "purple")) +
+  geom_hline(yintercept = 0.5, linetype = 2) +
+  coord_flip() +
+  labs(fill = "Wątki") +
+  theme_bw()
+```
+
+Na wykresie powyżej przedstawiony został rozkład wątków w poszczególnych rozdziałach. Można zauwazyć, że podziale dominuje wątek pierwszy. Zaobserwowano także 100% przynależność dla większości rozdziałów. Natomaist w przypadku 2 wątku, zaledwie kilka dokumentów została przypisana w 100%. Dodatkowo widoczne jest, że większość dokumentów należących do ksiązki pierwszej, jest powiązana z wątkiem 1, i odwrotnie. Ponadto, pod koniec książki 1 (dla której dominuje wątkek 2), w rozdziałach stopniowo zanika wątek 2, i zwiększa się proporcja wątku 1.
+
+## KLASYFIKACJA TEKSTU
+
+W kontekście analizy książek, takich jak "The Adventures of Tom Sawyer" i "Adventures of Huckleberry Finn", skorzystano z własnej klasyfikacji tematycznej, która obejmuje klasy "Adventures in a small town" i "Adventures on the River", wykorzystująć fabułę i motywy w analizowanych tekstach.
+
+"The Adventures of Tom Sawyer" można przypisać do klasy "Adventures in a small town", gdyż książka ta skupia się na przygodach młodego chłopca, Toma Sawyera, który mieszka w małym miasteczku i doświadcza różnych wydarzeń i przygód wraz ze swoimi przyjaciółmi. Przez analizę tej klasy można lepiej zrozumieć dynamikę społeczną, przyjaźń, eksplorację i rozwój głównego bohatera w kontekście życia w małym miasteczku.
+
+Z drugiej strony, "Adventures of Huckleberry Finn" można przypisać do klasy "Adventures on the River". Ta książka skupia się na przygodach Hucka Finna i Jima, uciekinierów podróżujących tratwą po rzece Mississippi. Przez analizę tej klasy można skupić się na tematach takich jak przyjaźń, wolność, rasizm, poszukiwanie tożsamości i podróżowanie przez przyrodę.
+
+```{r}
+klasy <- c(rep("Adventures in a small town", 35), rep("Adventures on the River", 43))
+
+book_1_summary$type <- klasy[1:35]
+book_2_summary$type <- klasy[36:78]
+```
+
+Wiersze od 1 do 35 należą do ksiązki "The Adventures of Tom Sawyer" nastomiast od 36 do 78 należą do ksiązki "Adventures of Huckleberry Finn".
+
+Połączenie obu książek
+
+```{r}
+booksg <-rbind(book_1_summary, book_2_summary)
+
+```
+
+```{r}
+table(booksg$type)
+
+```
+
+```{r}
+frequent_term <- findFreqTerms(dtm_tf, lowfreq = 500)
+
+```
+
+```{r}
+term_class <- as.data.frame(as.matrix(dtm_tf[, frequent_term]))
+
+```
+
+```{r}
+term_class$type <- klasy
+```
+
+#### Wizualizacja
+
+```{r}
+term_class %>%
+  gather(termy, wagi, -type) %>%
+  filter(type == 'Adventures in a small town') %>%
+  ggplot(aes(x = wagi, fill = termy)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ type) +
+  theme_bw()
+```
+
+```{r}
+term_class %>%
+  gather(termy, wagi, -type) %>%
+  filter(type == 'Adventures on the River') %>%
+  ggplot(aes(x = wagi, fill = termy)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ type) +
+  theme_bw()
+```
+
+```{r}
+term_class %>%
+  gather(termy, wagi, -type) %>%
+  ggplot(aes(x = wagi, fill = termy)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ type) +
+  theme_bw()
+```
+
+Klasa "Adventures in a small town":
+
+Najwyższy punkt gęstości dla wagi około 5 oznacza, że wokół tej wartości występuje największe skupienie wartości dla słowa "make" w klasie 'Adventures in a small town'. Oznacza to, że wartość 5 jest bardziej reprezentatywna dla tego konkretnego termu w tej klasie. Można przypuszczać, że słowo "make" odgrywa istotną rolę w opisywanych przygodach w małym mieście. Może to wskazywać na różne aktywności związane z tworzeniem, konstruowaniem lub organizowaniem czegoś, które są charakterystyczne dla tych konkretnych przygód.
+
+Najwyższa waga powyżej 20 z wartością gęstości wynosząca około 0,03, wskazuje, że słowo "good" jest istotne i ma wysoką wartość w tej klasie, ale występuje w różnych kontekstach lub może mieć różne znaczenia w zależności od przygód opisywanych w małym mieście.
+
+Klasa "Adventures on the River"
+
+Najwyższa gęstość dla słowa "take" oraz zaraz po nim dla słowa "see" dla wagi około 10 wskazuje na istotność tych terminów w opisywanych przygodach na rzece. Skoncentrowane wartości wokół wartości 10 sugerują, że działania związane z np. "take" oraz "see" odgrywają istotną rolę w opisywanych przygodach na rzece, co może obejmować różne aktywności związane z zabieraniem lub podejmowaniem czegoś oraz obserwowaniem otaczającego środowiska na rzece.
+
+W klasie "Adventures on the River" słowo "good" jest istotne, przy czym najwyższa waga przekraczająca 40 sugeruje, że to słowo ma szczególne znaczenie lub jest charakterystyczne dla tej konkretnej klasy.
+
+```{r}
+corpus_1 <- Corpus(VectorSource(booksg$text))
+```
+
+### I. Wagi binarne
+
+```{r}
+dtm_b <- DocumentTermMatrix(corpus_1, control = list(weight = TRUE))
+
+# Wyświetlanie macierzy binarnej
+dtm_df_b <- as.data.frame(as.matrix(dtm_b))
+dtm_df_b$type <- factor(klasy)
+
+```
+
+#### Zbiór uczący i testowy
+
+```{r}
+set.seed(987)
+wucz<- createDataPartition(booksg$type, p = 0.70, list = FALSE)
+Uczacy_b <- dtm_df_b[wucz,] # zbiór treningowy
+Testowy_b <- dtm_df_b[-wucz,] # zbiór testowy
+```
+
+```{r}
+table(Uczacy_b$type)
+table(Testowy_b$type)
+```
+
+#### Testowanie i predykcja
+
+```{r}
+# Tworzenie modelu bayesowskiego
+model_bayes <- naiveBayes(Uczacy_b, booksg$type[wucz])
+
+# Predykcja na zbiorze testowym
+predykcja <- predict(model_bayes, Testowy_b)
+
+# Wyświetlanie macierzy pomyłek
+tablica_pomylek <- table(predykcja, booksg$type[-wucz])
+print(tablica_pomylek)
+
+# Obliczanie dokładności modelu
+dokladnosc <- sum(diag(tablica_pomylek)) / sum(tablica_pomylek)
+print(paste("Dokładność modelu:", dokladnosc))
+
+```
+
+Na podstawie przedstawionej macierzy pomyłek można zinterpretować, że model nie poprawnie przewiduje żadne przypadki z klasy "Adventures in a small town" (Przygody w małym miasteczku), a dla klasy "Adventures on the River" (Przygody na rzece) dokładnie przewiduje 12 przypadków, ale błędnie przypisuje 10 przypadków do klasy "Adventures in a small town".
+
+Dokładność modelu wynosi 0.545454545454545, co oznacza, że tylko 54.5% przypadków zostało poprawnie przewidzianych przez model.
+
+### II. Wagi logarytmiczne
+
+```{r}
+dtm_tf <- DocumentTermMatrix(corpus, control = list(weighting = weightTf))
+
+dtm_log <- log2(as.matrix(dtm_tf) + 1) #Przekształcenie macierzy tf na macierz z wagami logarytmicznymi
+
+dtm_log <- data.frame(dtm_log)
+dtm_log$type <- factor(klasy)
+
+```
+
+#### Zbiór uczący i testowy
+
+```{r}
+Uczacy_log <- dtm_log[wucz,] # zbiór treningowy
+Testowy_log <- dtm_log[-wucz,] # zbiór testowy
+```
+
+#### Testowanie i predykcja
+
+```{r}
+model_bayes1 <- naiveBayes(Uczacy_log, booksg$type[wucz])
+predykcja1 <- predict(model_bayes1, Testowy_log)
+
+tablica_pomylek1 <- table(predykcja1, booksg$type[-wucz])
+print(tablica_pomylek1)
+dokladnosc1 <- sum(diag(tablica_pomylek1)) / sum(tablica_pomylek1)
+print(paste("Dokładność modelu:", dokladnosc1))
+```
+
+Na podstawie przedstawionej macierzy pomyłek można zinterpretować, że model nie poprawnie przewiduje żadnego przypadku z klasy "Adventures in a small town" (Przygody w małym miasteczku) i poprawnie przewiduje 12 przypadków z klasy "Adventures on the River" (Przygody na rzece). Jednakże, model popełnia 10 pomyłek, przewidując przypadki z klasy "Adventures on the River" jako przypadki z klasy "Adventures in a small town".
+
+Dokładność modelu, czyli stosunek poprawnie przewidzianych przypadków do wszystkich przypadków, wynosi 0.545454545454545 lub około 54,5%.
+
+### III. Wagi TFIDF
+
+```{r}
+dtm <- DocumentTermMatrix(corpus_1)
+tfidf <- weightTfIdf(dtm)
+tfidf<- as.data.frame(as.matrix(tfidf))
+tfidf$type <- factor(klasy)
+
+
+```
+
+#### Zbiór uczący i testowy
+
+```{r}
+Uczacy_tfidf <- tfidf[wucz,] # zbiór treningowy
+Testowy_tfidf <- tfidf[-wucz,] # zbiór testowy
+```
+
+#### Testowanie i predykcja
+
+```{r warning=FALSE}
+model_bayes2 <- naiveBayes(Uczacy_tfidf, booksg$type[wucz])
+predykcja2 <- predict(model_bayes2, Testowy_tfidf)
+
+tablica_pomylek2 <- table(predykcja2, booksg$type[-wucz])
+print(tablica_pomylek2)
+dokladnosc2 <- sum(diag(tablica_pomylek2)) / sum(tablica_pomylek2)
+print(paste("Dokładność modelu:", dokladnosc2))
+```
+
+Na podstawie przedstawionej macierzy pomyłek można zinterpretować, że model poprawnie przewiduje wszystkie przypadki z klasy "Adventures in a small town" (Przygody w małym miasteczku) i również poprawnie przewiduje wszystkie przypadki z klasy "Adventures on the River" (Przygody na rzece). Nie ma żadnych pomyłek w predykcji.
+
+Dokładność modelu wynosi 1, co oznacza, że model jest w stanie poprawnie przewidzieć wszystkie przypadki na podstawie dostępnych danych. Jest to wynik idealny, co sugeruje, że model doskonale odzwierciedla zależności i jest w stanie dokładnie rozpoznać klasy obiektów.
+
+#### Podsumowanie
+
+Podsumowując wyniki dla trzech różnych wag (binarne, logarytmiczne, TFIDF) i ich dokładności, otrzymujemy:
+
+1.  Model z wagami binarnymi:
+
+    -   Dokładność modelu: 0.545454545454545 (54.54%)
+
+2.  Model logarytmiczny:
+
+    -   Dokładność modelu: 0.545454545454545 (54.54%)
+
+3.  Model z wagą TFIDF:
+
+    -   Dokładność modelu: 1 (100%)
+
+Na podstawie wyników dokładności, można stwierdzić, że model z wagami TFIDF osiągnął najwyższą dokładność w przewidywaniu wyników w porównaniu do modelu logarytmicznego i modelu z wagą binarną.
+
+Ostatecznie, model z wagami TFIDF, który osiągnął dokładność wynoszącą około 100%, jest najbardziej skutecznym modelem spośród analizowanych.
+
+## ANALIZA SENTYMENTU
+
+Analiza sentymentu jest ostatnim, ale równie ważnym etapem w całym procesie analizy książek. Dzięki analizie sentymentu można zrozumieć, jak czytelnicy mogą emocjonalnie reagować na treść książek: "The Adventures of Tom Sawyer" i "Adventures of Huckleberry Finn".
+
+#### Wczytanie danych
+
+Ze względu na chęć utrzymania przejrzystości i uniknięcią błednych odwołań, ponownie wczytano dane.
+
+```{r}
+book_1 <- readLines("The-Adventures-of-Tom-Sawyer.txt") %>%
+  paste(collapse = " ") %>%
+  strsplit(split = "(CHAPTER\\s+)", perl = TRUE) %>%
+  unlist()
+book_1_df <- data.frame(chapter = 0:(length(book_1)-1), text = book_1, stringsAsFactors = FALSE)
+book_1_df <- tail(book_1_df, -1)
+
+book_2 <- readLines("Adventures-of-Huckleberry-Finn.txt") %>%
+  paste(collapse = " ") %>%
+  strsplit(split = "(CHAPTER\\s+)", perl = TRUE) %>%
+  unlist()
+book_2_df <- data.frame(chapter = 0:(length(book_2)-1), text = book_2, stringsAsFactors = FALSE)
+book_2_df <- tail(book_2_df, -1)
+
+```
+
+#### Analiza dla książki: "The Adventures of Tom Sawyer"
+
+```{r}
+sentences <- get_sentences(book_1)
+```
+
+```{r warning=FALSE}
+extract_sentiment_terms(book_1)
+```
+
+```{r warning=FALSE}
+extract_sentiment_terms(book_1) %>% unnest(negative)
+```
+
+```{r warning=FALSE}
+extract_sentiment_terms(book_1) %>% unnest(positive)
+
+```
+
+#### **Analiza nastroju całego dokumentu**
+
+```{r warning=FALSE}
+wynik_by <- sentiment_by(book_1, polarity_dt = lexicon::hash_sentiment_huliu)
+plot(wynik_by)
+```
+
+#### Wizualizacja oceny nastroju wszystkich dokumentów
+
+```{r}
+ggplot(wynik_by, aes(element_id, ave_sentiment)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Analiza nastrojów opinii", x = "Opinie", y = "Ocena sentymentu") +
+  theme_classic()
+```
+
+```{r}
+moje_kolory <- c("deeppink", "purple", "lightblue")
+
+wynik_by %>%
+  mutate(kolor = ifelse(ave_sentiment == 0,
+                        "Neutralna",
+                        ifelse(ave_sentiment < 0, "Negatywna", "Pozytywna"))) %>%
+  ggplot(aes(element_id, ave_sentiment, fill = kolor, color = kolor)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = moje_kolory) +
+  scale_color_manual(values = moje_kolory) +
+  labs(title = "Analiza nastrojów opinii", x = "Opinie", y = "Ocena sentymentu") +
+  theme_classic()
+
+```
+
+Analiza sentymentu dla książki "The Adventures of Tom Sawyer" wskazuje na mieszane uczucia, które występują przez większość treści. W trakcie narracji można zaobserwować zarówno pozytywne, jak i negatywne odczucia. Jednak od 8 do 18 rozdziału dominuje głównie negatywny nastrój. Natomiast ostatnie rozdziały książki wywołują pozytywne uczucia i wskazują na dobre zakończenie.
+
+#### Analiza dla książki: "The Adventures of Huckleberry Finn"
+
+```{r}
+sentences <- get_sentences(book_2)
+
+```
+
+```{r warning=FALSE}
+extract_sentiment_terms(book_2)
+```
+
+```{r warning=FALSE}
+extract_sentiment_terms(book_2) %>% unnest(negative)
+
+```
+
+```{r warning=FALSE}
+extract_sentiment_terms(book_2) %>% unnest(positive)
+
+```
+
+**Analiza nastroju całego dokumentu**
+
+```{r warning=FALSE}
+wynik_by1 <- sentiment_by(book_2, polarity_dt = lexicon::hash_sentiment_huliu)
+plot(wynik_by1)
+```
+
+**Wizualizacja oceny nastroju wszystkich dokumentów**
+
+```{r}
+ggplot(wynik_by1, aes(element_id, ave_sentiment)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Analiza nastrojów opinii", x = "Opinie", y = "Ocena sentymentu") +
+  theme_classic()
+```
+
+```{r}
+moje_kolory <- c("deeppink", "purple", "lightblue")
+
+wynik_by1 %>%
+  mutate(kolor = ifelse(ave_sentiment == 0,
+                        "Neutralna",
+                        ifelse(ave_sentiment < 0, "Negatywna", "Pozytywna"))) %>%
+  ggplot(aes(element_id, ave_sentiment, fill = kolor, color = kolor)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = moje_kolory) +
+  scale_color_manual(values = moje_kolory) +
+  labs(title = "Analiza nastrojów opinii", x = "Opinie", y = "Ocena sentymentu") +
+  theme_classic()
+```
+
+Na podstawie przedstawionego wykresu można zauważyć, że sentyment w trakcie czytania książki ewoluuje z negatywnego w początkowych rozdziałach na pozytywny. Istnieje pewne odchylenie od odczuć pozytywnych w niektórych rozdziałach, jednak od około 25. rozdziału sentyment jest głównie pozytywny.
+
+To sugeruje, że treść i wydarzenia przedstawione w książce prowadzą do zmiany nastroju czytelnika, początkowo może być negatywna, ale później staje się coraz bardziej pozytywna. Przyczyny takiej zmiany mogą być związane z rozwojem fabuły, rozwinięciem postaci czy pojawieniem się pozytywnych i inspirujących wątków.
+
+Analiza sentymentu na podstawie wykresu daje nam wgląd w dynamikę emocjonalną książki i potencjalnie sugeruje, że historia przesuwa się w stronę pozytywnych i optymistycznych wrażeń.
