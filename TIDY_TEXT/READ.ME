@@ -1,17 +1,17 @@
-BIBLIOTEKA TIDY TEXT
+TIDY TEXT LIBRARY
 
-Projekt grupowy.
+Group project.
 
-Celem projektu było  przygotowanie prezentacji dotyczącej wybranej biblioteki programistycznej w języku Python lub R, która pozwala na efektywne przygotowanie tekstu do analizy poprzez utworzenie macierzy wystąpień. Prezentacja powinna w sposób praktyczny przedstawić możliwości wybranej biblioteki, w tym procesu przygotowania tekstu od dokumentu/dokumentów/korpusu do macierzy wystąpień. W szczególności należało skupić się na opisaniu praktycznych aspektów korzystania z biblioteki, a także wskazać na potencjalne zastosowanie.
+The aim of the project was to prepare a presentation on a selected programming library in Python or R, which allows for effective preparation of text for analysis by creating a matrix of occurrences. The presentation should present in a practical way the capabilities of the selected library, including the process of preparing the text from the document/documents/corpus to the occurrence matrix. In particular, it was necessary to focus on describing the practical aspects of using the library and also point to its potential applications.
 
-Do realizacji tego projektu wykorzystano język R oraz bibliotekę Tidy Text. Przeprowadzono cały proces analizy tekstu, od pobrania danych, przez oczyszczenie i przetworzenie tekstu, aż do utworzenia macierzy wystąpień słów. W dalszej części prezentacji przedstawiono szczegóły krok po kroku.
+The R language and the Tidy Text library were used to implement this project. The entire text analysis process was carried out, from data collection, through cleaning and processing the text, to creating a matrix of word occurrences. The rest of the presentation provides step-by-step details.
 
-Na początku konieczne było pobranie danych, aby móc przeprowadzić analizę. Następnie przystąpiono do oczyszczania i przetwarzania tekstu, wykorzystującbibliotekę Tidy Text.
+Initially, it was necessary to download data in order to perform the analysis. Then, text cleaning and processing began using the Tidy Text library.
 
-Pierwszym krokiem było podzielenie tekstu na pojedyncze słowa. Zrobionoto przy pomocy funkcji unnest_tokens, która dzieli tekst na słowa i zapisuje je w osobnych wierszach w ramce danych.
+The first step was to divide the text into individual words. This was done using the unnest_tokens function, which splits the text into words and stores them on separate lines in the data frame.
 
-Kolejnym etapem było oczyszczenie tekstu z niepotrzebnych słów, takich jak spójniki czy przyimki, oraz z interpunkcji. Do tego celu skorzystano z funkcji anti_join oraz unnest_tokens, które pozwoliły usunąć słowa, które nie były istotne dla analizy.
+The next stage was to clean the text of unnecessary words, such as conjunctions and prepositions, as well as punctuation. For this purpose, the anti_join and unnest_tokens functions were used to remove words that were not important for the analysis.
 
-Następnie przeprowadzonostemming, czyli proces sprowadzenia słów do ich podstawowej formy, aby uniknąć sytuacji, w której różne formy tego samego słowa były traktowane jako oddzielne słowa. Do tego celu skorzystano z funkcji porter_stemmer z biblioteki SnowballC.
+Stemming, the process of reducing words to their basic form, was then carried out to avoid different forms of the same word being treated as separate words. For this purpose, the porter_stemmer function from the SnowballC library was used.
 
-Po oczyszczeniu tekstu przystępiono do utworzenia macierzy wystąpień.
+After cleaning the text, the occurrence matrix was created.
