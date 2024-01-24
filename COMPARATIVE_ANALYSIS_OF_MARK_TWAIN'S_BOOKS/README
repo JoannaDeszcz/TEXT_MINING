@@ -1,17 +1,17 @@
-Celem projktu jest analiza dwóch zbiorów dokumentów na wybrany temat, w którym można wyróżnić dwie odrębne tematy/kategorie/grupy oraz książek tego samego autora.
+The aim of the project is to analyze two sets of documents on a selected topic, in which two separate topics/categories/groups can be distinguished, and books by the same author.
 
-Etapy projektu:
+Project stages:
 
-    Przygotowanie korpusu tekstowego poprzez oczyszczenie i normalizację tekstu oraz redukcję rzadkości macierzy wystąpień.
+     Preparation of the text corpus by cleaning and normalizing the text and reducing the sparsity of the occurrence matrix.
 
-    Przygotowanie chmur słów: słów występujących jednocześnie we wszystkich dokumentach oraz unikatowych słów występujących tylko w poszczególnych dokumentach.
+     Preparing word clouds: words that appear simultaneously in all documents and unique words that appear only in individual documents.
 
-    Sprawdzenie, czy przyjęte kategorie/grupy odzwierciedlające przyjętą dychotomię występują w badanych dokumentach, wykorzystując grupowanie i modele wątków.
+     Checking whether the adopted categories/groups reflecting the adopted dichotomy appear in the examined documents, using grouping and thread models.
 
-    Budowa trzech klasyfikatorów z wykorzystaniem algorytmu klasyfikacji: binarnego, logarytmicznego i TfIdf.
+     Construction of three classifiers using the classification algorithm: binary, logarithmic and TfIdf.
 
-    Wybór najlepszego klasyfikatora na podstawie miar wyliczonych z macierzy pomyłek oraz interpretacja wyników.
+     Selection of the best classifier based on measures calculated from the confusion matrix and interpretation of the results.
 
-    Wyznaczenie wskaźnika polaryzacji nastroju dla badanych dokumentów.
+     Determining the mood polarization index for the examined documents.
 
-W projekcie wykorzystano dane pochodzące z dwóch książek autorstwa Marka Twaina: “The Adventures of Tom Sawyer” oraz “Adventures of Huckleberry Finn”.
+The project used data from two books by Mark Twain: "The Adventures of Tom Sawyer" and "Adventures of Huckleberry Finn".
