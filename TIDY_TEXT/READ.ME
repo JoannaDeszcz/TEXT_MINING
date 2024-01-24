@@ -2,15 +2,22 @@ TIDY TEXT LIBRARY
 
 Group project.
 
-The aim of the project was to prepare a presentation on a selected programming library in Python or R, which allows for effective preparation of text for analysis by creating a matrix of occurrences. The presentation should present in a practical way the capabilities of the selected library, including the process of preparing the text from the document/documents/corpus to the occurrence matrix. In particular, it was necessary to focus on describing the practical aspects of using the library and also point to its potential applications.
+The aim of the project was to prepare a presentation on a selected programming library in Python or R, which allows for effective preparation of text for analysis by creating a matrix of occurrences. 
+The presentation should present in a practical way the capabilities of the selected library, including the process of preparing the text from the document/documents/corpus to the occurrence matrix.
+In particular, it was necessary to focus on describing the practical aspects of using the library and also point to its potential applications.
 
-The R language and the Tidy Text library were used to implement this project. The entire text analysis process was carried out, from data collection, through cleaning and processing the text, to creating a matrix of word occurrences. The rest of the presentation provides step-by-step details.
+The R language and the Tidy Text library were used to implement this project. 
+The entire text analysis process was carried out, from data collection, through cleaning and processing the text, to creating a matrix of word occurrences. 
+The rest of the presentation provides step-by-step details.
 
-Initially, it was necessary to download data in order to perform the analysis. Then, text cleaning and processing began using the Tidy Text library.
+Initially, it was necessary to download data in order to perform the analysis. 
+Then, text cleaning and processing began using the Tidy Text library.
 
-The first step was to divide the text into individual words. This was done using the unnest_tokens function, which splits the text into words and stores them on separate lines in the data frame.
+The first step was to divide the text into individual words. 
+This was done using the unnest_tokens function, which splits the text into words and stores them on separate lines in the data frame.
 
-The next stage was to clean the text of unnecessary words, such as conjunctions and prepositions, as well as punctuation. For this purpose, the anti_join and unnest_tokens functions were used to remove words that were not important for the analysis.
+The next stage was to clean the text of unnecessary words, such as conjunctions and prepositions, as well as punctuation. 
+For this purpose, the anti_join and unnest_tokens functions were used to remove words that were not important for the analysis.
 
 Stemming, the process of reducing words to their basic form, was then carried out to avoid different forms of the same word being treated as separate words. For this purpose, the porter_stemmer function from the SnowballC library was used.
 
